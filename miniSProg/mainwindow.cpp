@@ -43,7 +43,7 @@ MainWindow::MainWindow(QWidget *parent) :
         xc3sprog_file.setFile(xc3sprog_path);
     }
 
-    // check if file exists and if yes: Is it really a file and no directory?
+    // check if file exists and if yes: Is it really a file and not a directory?
     if (xc3sprog_file.exists() && xc3sprog_file.isFile()) {
         ui->lineEdit_xc3sprog->setText(xc3sprog_file.canonicalFilePath());
     }
@@ -67,7 +67,9 @@ void MainWindow::on_actionExit_triggered()
 
 void MainWindow::procStarted()
 {
+    QDir mydir;
     //ui->textEdit->append("Started");
+    //ui->textEdit->append(mydir.currentPath());
 }
 
 void MainWindow::procError(QProcess::ProcessError procError)
@@ -140,6 +142,7 @@ void MainWindow::on_toolBtnBit_clicked()
 {
     QString bitfile_path = QFileDialog::getOpenFileName(this, tr("Select the bit file"),"./",tr("bit Files (*.bit)"));
     ui->lineEdit_bitfile->setText(bitfile_path);
+
 }
 
 void MainWindow::on_checkBox_details_stateChanged(int status)
@@ -157,6 +160,9 @@ void MainWindow::on_checkBox_details_stateChanged(int status)
 
 void MainWindow::on_pushButton_Program_clicked()
 {
+//    QString temp;
+//    temp = proc->workingDirectory();
+//    ui->textEdit->append(temp);
     if (ui->lineEdit_xc3sprog->text().isEmpty()) {
         ui->textEdit->setTextColor(Qt::red);
         ui->textEdit->append(tr("ERROR: Select the xc3sprog path first."));
@@ -170,8 +176,87 @@ void MainWindow::on_pushButton_Program_clicked()
         QStringList arguments;
         arguments.append("-c");
         arguments.append("ftdi");
-        arguments.append(ui->lineEdit_bitfile->text());
+
+
+        //Split the path and filename, because xc3sprog can not work with full file path on Windows, specifically if drive letter is included in path of filename
+        QString bitfile_full_path = ui->lineEdit_bitfile->text();
+        QFileInfo bitfile(bitfile_full_path);
+        QString bitfile_name = bitfile.fileName();
+        QString bitfile_path = bitfile.path();
+
+
+        //ui->textEdit->append(bitfile_path);
+        //ui->textEdit->append(bitfile_name);
+
+        arguments.append(bitfile_name);
+        proc->setWorkingDirectory(bitfile_path); //Call the process with the working directory set to the bitfile path, thus xc3sprog uses relative path and can find the file
+
         proc->start(program, arguments);
+    }
+}
+
+void MainWindow::on_pushButton_Flash_clicked()
+{
+    //First program the bsi_scan.bit file to the FPGA, then send the bit file that must be stored on the flash
+    if (ui->lineEdit_xc3sprog->text().isEmpty()) {
+        ui->textEdit->setTextColor(Qt::red);
+        ui->textEdit->append(tr("ERROR: Select the xc3sprog path first."));
+        setDefaultConsoleColor();
+    } else if (ui->lineEdit_bitfile->text().isEmpty()) {
+        ui->textEdit->setTextColor(Qt::red);
+        ui->textEdit->append(tr("ERROR: Select the bit file first."));
+        setDefaultConsoleColor();
+    } else {
+        QString program = ui->lineEdit_xc3sprog->text();
+        QStringList arguments;
+        arguments.append("-c");
+        arguments.append("ftdi");
+
+        //Assume the bsi_scan.bit file is stored in the working directory of xc3sprog executable
+        //Split the path and filename, because xc3sprog can not work with full file path on Windows, specifically if drive letter is included in path of filename
+
+
+        QString xc3sprog_full_path = ui->lineEdit_xc3sprog->text();
+        QFileInfo xc3sprog_file(xc3sprog_full_path);
+        QString xc3sprog_file_path = xc3sprog_file.path();
+        QString bscan_bitfile_name = "";
+        QString bitfile_full_path = ui->lineEdit_bitfile->text();
+        QFileInfo bitfile(bitfile_full_path);
+        QString bitfile_name = bitfile.fileName();
+        QString bitfile_path = bitfile.path();
+
+
+        if (ui->radioButton_LX25->isChecked())
+             bscan_bitfile_name = "bscan_spi_s6lx25_ftg256.bit";
+        else if (ui->radioButton_LX9->isChecked())
+             bscan_bitfile_name = "bscan_spi_s6lx9_ftg256.bit";
+
+
+        bscan_bitfile_name = "bscan_spi_s6lx25_ftg256.bit";
+
+
+        arguments.append(bscan_bitfile_name);
+        proc->setWorkingDirectory(xc3sprog_file_path); //Call the process with the working directory set to the bitfile path, thus xc3sprog uses relative path and can find the file
+        proc->start(program, arguments);
+
+
+        proc->waitForFinished(); // wait for the process to finish, before writing the next bitfile
+
+
+        //ui->textEdit->append(bitfile_path);
+        //ui->textEdit->append(bitfile_name);
+
+        //Repeat, but now write the user bitfile using the -I switch
+        arguments.clear();
+        arguments.append("-c");
+        arguments.append("ftdi");
+        arguments.append("-I");
+
+
+        arguments.append(bitfile_name);
+        proc->setWorkingDirectory(bitfile_path); //Call the process with the working directory set to the bitfile path, thus xc3sprog uses relative path and can find the file
+        proc->start(program, arguments);
+        proc->waitForFinished();    proc->waitForFinished(); // wait for the process to finish
     }
 }
 
@@ -186,3 +271,5 @@ void MainWindow::on_actionAbout_triggered()
                         "v1.0");
     QMessageBox::about(this, myTitle, myBody);
 }
+
+
